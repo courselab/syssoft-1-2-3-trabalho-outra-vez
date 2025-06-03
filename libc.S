@@ -5,6 +5,7 @@
 #  This file is a derivative of SYSeg (https://gitlab.com/monaco/syseg)
 #  and includes modifications made by the following author(s):
 #  Pones <felipemoma@yahoo.com.br>
+#  Victor Reis <reisvictor448@gmail.com>
 
 .code16gcc
 	.global printf
