@@ -1,0 +1,15 @@
+Integrantes :
+
+Antonio Italo Lima Lopes - nUSP: 12542290
+Felipe Seiji Momma Valente - nUSP : 12543700
+Victor Vieira Custodio Reis - nUSP: 10734686
+
+The exercise was solved by using one of the recommendations brought by the challenge.
+What was made was to add a new function using that called the interruption INT 0x12.
+This interruption gets the low memory size and stores it in registrator AX. But, before this,
+this function gets the XOR of BX and BX. This makes that the registrator BX to initialize, or equals zero.
+
+In the main.c, the function created for the challenge is called and, if it is not empty,
+its size is caught by stacking its digits and inverts it.
+
+After this function call, its printed its result.
