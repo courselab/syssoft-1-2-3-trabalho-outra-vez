@@ -1,0 +1,207 @@
+Integrantes :
+
+Antonio Italo Lima Lopes - nUSP: 12542290
+Felipe Seiji Momma Valente - nUSP : 12543700
+Guilherme Alves Lindo - nUSP: 8504480
+Victor Vieira Custodio Reis - nUSP: 10734686
+
+
+1)Explain the results.
+Executando o p1 ele imprime o endereço da main:
+
+Main's ddress: 0x5655b18d
+Main's ddress: 0x5655618d
+Main's ddress: 0x5657f18d
+Main's ddress: 0x565d018d
+
+Em cada execução ele imprimia endereços diferentes, isso se deve ao fato do meu gcc 
+(gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04)) por padrão utilizar a flag -pie 
+(compilando com gcc -v é possível ver que ele utiliza realmente o -pie).
+
+Alterando a flag para -no-pie o endereço impresso é sempre o mesmo
+gcc -m32 -no-pie p1.c -o p1
+Main's ddress: 0x8049166
+Main's ddress: 0x8049166
+Main's ddress: 0x8049166
+Main's ddress: 0x8049166
+
+2)Fix design vulnerability.
+
+Questão 2:
+
+Primeira execução do código original: 
+    input: foo
+    output: Access granted.
+
+Segunda execução do código original:
+    input: youshallnotpass
+    output: Access granted
+
+Por conta da flags e da estrutura do código, é permitido que se faça o input de strings maiores que o definido 
+sem emitir erros e sem fazer a verificação. Para que seja mais robusto, pode-se usar 
+a função strncmp para limitar o tanto de caracteres que serão verificados. 
+Então ao comparar a ‘user_key’ com ‘foo’, caso o input colocado extrapole o buffer da stack, 
+a própria função vai limitar o seu tamanho para que se comporte da maneira esperada. 
+Com a flag '-fstack-protector', faz com que a memória seja protegida e não 
+deixa que se aloque mais memória para o que foi definida para a variável 'user_key'
+
+
+
+3)Explain the function calls.
+a) Locate the line where 'foo' calls 'bar' and explain how the caller passes the parameter to the callee. In your answer,
+clarify the concepts of calling convention and application binary interface.
+
+
+80491ae: 50                push   %eax      ;n+1
+80491af: e8 eb ff ff ff    call   804919f <bar>
+
+
+Estas instruções mostram que a função foo está passando um argumento para bar por meio da pilha. 
+Primeiro, o valor n + 1 é armazenado no registrador %eax, e em seguida é empilhado com a instrução push %eax. 
+Isso coloca o argumento no topo da pilha. Depois disso, a instrução call transfere a execução para a função bar.
+Esse mecanismo de passagem de parâmetros é definido pela calling convention, que especifica regras sobre como os 
+parâmetros são passados, como os valores de retorno são recebidos e quem é responsável por limpar a pilha. 
+Esse comportamento faz parte da ABI (Application Binary Interface), que é o conjunto de regras que define como 
+funções interagem em nível binário. 
+
+b)How 'bar' returns its result to 'foo'? How does the answer relate to what you discussed in item (a)? 
+Is it a linux-only thing?
+
+80491ce: mov    -0x4(%ebp),%eax   ; move o valor b para %eax
+80491d1: ret
+
+O valor de retorno da função é colocado no registrador %eax, conforme a convenção padrão da ABI x86 (cdecl). 
+Esse valor estará disponível para o chamador (foo) após o call. Assim como no (a), os parâmetros são passados pela pilha, 
+o valor de retorno segue a convenção de ser armazenado em %eax. Isso é uma característica da ABI x86, 
+usada em diversos sistemas operacionais, incluindo Linux, Windows, etc. A ABI depende da arquitetura e compilador, 
+não do SO diretamente.
+
+c)Explain what is the purpose of the first two instruction and the second-to-last instruction of the function 'foo'. 
+Give a didactic overview of what they do and what would happen if they were suppressed? Are they always necessary, 
+or can they be omitted in some circumstances?
+
+
+804919f: 55                push   %ebp         ; salva valor antigo de ebp
+80491a0: 89 e5             mov    %esp,%ebp    ; cria novo frame da pilha
+
+80491bd: c9                leave               ; desfaz frame atual
+
+Essas instruções criam e desfazem o stack frame da função, permitindo acesso fácil aos parâmetros e variáveis locais. 
+Se omitidas podem causar comportamento indefinido se o código depender do frame pointer. 
+Não sÃo sempre necessários em funções simples, o compilador pode otimizar e usar apenas %esp
+
+
+d) What is the purpose of the third line in both functions 'foo' and 'bar' and what does it have to do with the x86 ABI? 
+Does it serve the same purpose than the third line of 'main'? 
+Explain didactically how those pieces of code work.
+
+A terceira linha das funções foo e bar tem o formato sub $valor, %esp, e serve para reservar espaço na pilha 
+para variáveis locais dessas funções. Esse espaço é necessário para que a função possa armazenar seus dados temporários, 
+como variáveis internas (int a, int b, etc.). 
+Essa prática está ligada à ABI porque ela define como a pilha deve ser usada: onde colocar parâmetros, 
+onde guardar valores locais, como alinhar a pilha, etc. 
+Na função main, a terceira linha (and $0xfffffff0, %esp) não serve para reservar espaço, mas sim para alinhar a pilha 
+em um múltiplo de 16 bytes. Esse alinhamento é exigido pela ABI moderna para garantir compatibilidade com instruções de SSE. 
+
+e)In the source code, change the return type of 'bar' to 'char'. 
+Rebuild p3 and examine the difference in the disassembly of 'foo'. 
+Explain what the compiler did and, based on your answer, discuss why the declaration of 'foo' and 'bar' before 'main' are useful. 
+
+O trecho de código que lida com o valor de retorno agora inclui a instrução:
+
+80491b7:  movzx  %al, %eax
+
+Essa instrução significa que o compilador está fazendo uma e zero-extension do registrador %al (8 bits, onde o char foi retornado) 
+para %eax (32 bits, do tipo int). Isso acontece porque foo armazena o valor retornado em uma variável local do tipo int, 
+então o compilador precisa garantir que os bits extras do valor estejam corretamente definidos.
+No código original, quando bar retornava um int, isso não era necessário, pois o valor já estava completo em %eax. 
+Mas ao retornar char, só os 8 bits menos significativos são relevantes. 
+Por isso, o compilador insere movzx %al, %eax para garantir que o valor seja corretamente convertido de char para int, 
+sem lixo nos bits mais altos. A declaração correta de bar e foo antes do main permite que o compilador saiba como lidar 
+com chamadas de função, especialmente quanto ao tamanho do valor de retorno e à forma correta de tratá-lo.
+
+
+
+4)How libraries work.
+
+a) Ambos p4-v1 e p4-v2 possuem o mesmo resultado de somente imprimir a palavra “Foo” na tela, mas o p4-v3 não 
+executa corretamente devido a não encontrar a shared library “libp4.so”. Isso pode ser corrigido durante a execução, 
+por exemplo, com o comando “LD_LIBRARY_PATH='.' ./p4-v3” sendo utilizado para sua execução. 
+Para modificar o makefile fazendo com que p4-v3 seja executável de qualquer diretório, é necessário garantir que a 
+shared library seja sempre encontrada pelo kernel durante a execução. 
+Supondo que a shared library esteja sempre no mesmo diretório do p4-v3, a seguinte modificação pode ser feita no makefile:
+
+p4-v3 : p4.o libp4.so 	
+gcc -m32 $< -L. -Wl,-rpath,'$$ORIGIN' -lp4 -o $@
+
+
+
+b)
+
+Arquivo  |   Tamanho  (bytes)
+p4-v1    |     14704
+p4-v2    |     14664
+p4-v3    |     14608
+
+
+
+Devido a forma como código externo é tratado pelas 3 formas diferentes de compilação e linking usada na construção desses 
+executáveis, seus tamanhos são diferentes. p4-v3 é o menor, 
+por colocar todas as funções externas (referentes aos arquivos p4a.c e p4b.c) em uma biblioteca externa, 
+libp4.so, porém essa versão não é contida em si mesma, tendo essa dependência externa. 
+No caso de p4-v2, o link com a biblioteca estática libp4.a em tempo de compilação faz com que o compilador 
+coloque somente o código referente aos símbolos utilizados na main do nosso programa, ou seja, 
+somente o código referente a função Foo está presente no arquivo p4-v2, sem memória desperdiçada para o arquivo p4b.c. 
+No arquivo p4-v1, tanto o código p4a.c quanto o arquivo p4.o são inseridos na construção final do arquivo, gerando um tamanho maior,
+mesmo que a função Bar não tenha sido utilizada.
+
+
+c) 
+
+Conforme explicado no item b), somente o arquivo p4-v1 vai possuir ambos os símbolos linkados, 
+portanto ele é o único com ambos foo e bar presentes. Nos arquivos p4-v2 e p4-v3, somente o símbolo foo está presente.
+
+d) 
+Enquanto tanto p4-v1 quanto p4-v2 possuem somente a biblioteca compartilhada libc.so.6 como necessária, 
+que é referente ao código das funções da biblioteca stdio.h, a biblioteca compartilhada libp4.so também é indicada no p4-v3, 
+devido ao seu link dinâmico no makefile. Esse nome é utilizado pelo kernel durante a tentativa de executar o 
+arquivo p4-v3 para encontrar a biblioteca compartilhada e, portanto, 
+o código necessário para a execução, por exemplo, da função foo.
+
+e)
+
+Cenário     |      Pró estático          |   Contra estático    |   Pró dinâmico       |    Contra dinâmico
+____________|____________________________|______________________|______________________|__________________________
+            |   Instalação imediata e    |     Arquivo maior    |  Arquivo principal   |   Instalação pode ser problemática 
+            |   simples                  |                      |   menor              |   com shared objects faltantes
+  a         |                            |                      |                      |
+            |                            |                      |                      |
+____________|____________________________|______________________|______________________|__________________________
+            |                            |                      |                      |
+            |                            | Um novo arquivo      | Somente o arquivo    |
+  b         |                            | executável precisa   | .so precisa ser      |
+            |                            | ser gerado           | atualizado           |
+            |                            |                      |                      |
+____________|____________________________|______________________|______________________|__________________________
+            |                            |                      |                      |
+            |                            | O código que poderia | Todos os executáveis |
+            |                            | estar em um único    | dependentes dessa    |
+  c         |                            | lugar no disco vai   | biblioteca podem     |
+            |                            | ter que estar        | utilizá-la sem       |
+            |                            | presente em todos os | preocupações         |
+            |                            | arquivos que o       |                      |
+            |                            | utilizam             |                      |
+            |                            |                      |                      |
+____________|____________________________|______________________|______________________|__________________________
+
+
+
+DYN) Explain the differences between
+
+Quando há instalação em outros hosts: nas libs estáticas, há a simplificação das dependências das libs, 
+pois tem dependencias externas enquanto nas dinâmicas têm a necessidade de garantir que as libs dinâmicas estejam no host. 
+Na ataualização de bibliotecas: nas libs estáticas, é necessário que todos os executáveis que usam a lib sejam recompilados e 
+redistribuídos, enquanto na lib dinâmica somente a lib precisa ser atualizada. 
+A biblioteca é usada por muitos programas no mesmo host: Nas libs estáticas, cada programa vai copiar os objetos da lib, 
+tendo mais uso do espaço do disco, enquanto nas dinâmicas, a lib é compartilhada entre os programas, 
+economizando espaço no disco e memória.
